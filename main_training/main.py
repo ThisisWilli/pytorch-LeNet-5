@@ -1,13 +1,12 @@
 '''
 @project : LeNet-5
 @author  : Hoodie_Willi
-@description: ${}
+@description: $创建LeNet-5网络并训练
 @time   : 2019-06-26 18:27:01
 '''
 import torch
 from torch.utils.data import DataLoader
 from data.Mydataset import MyDataset
-import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torchvision.datasets as dset
@@ -15,43 +14,70 @@ import torch.autograd
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 import torch.optim as optim
+import os
+from datetime import datetime
 import cv2
+import torchvision
+
 train_txt_path = '../data/MNIST/txt/train.txt'
 test_txt_path = '../data/MNIST/txt/test.txt'
+valid_txt_path = '../data/MNIST/txt/valid.txt'
 train_bs = 64
 test_bs = 64
 
-# use cuda or not
+# 是否使用显卡
 use_cuda = torch.cuda.is_available()
 
 transform = transforms.Compose([
     transforms.ToTensor(),
-    transforms.Normalize([0.5], [0.5]),
+    transforms.Normalize([0.5], [0.5]),  # 不知道为什么这样，将3通道变为单通道
                                 ])
+
+now_time = datetime.now()
+time_str = datetime.strftime(now_time, '%m-%d_%H-%M-%S')
+
 # 构建MyDataset实例
 train_data = MyDataset(txt_path=train_txt_path, transform=transform)
 test_data = MyDataset(txt_path=test_txt_path, transform=transform)
+valid_data = MyDataset(txt_path=valid_txt_path, transform=transform)
 print(len(train_data), len(test_data))
 # 构建DataLoder
 train_loader = DataLoader(dataset=train_data, batch_size=train_bs, shuffle=True)
 test_loader = DataLoader(dataset=test_data, batch_size=test_bs, shuffle=True)
+valid_loader = DataLoader(dataset=valid_data, batch_size=1, shuffle=True)
 
 
 class LeNet(nn.Module):
     def __init__(self):
         super(LeNet, self).__init__()
-        self.conv1 = nn.Conv2d(1, 20, 5, 1)
-        self.conv2 = nn.Conv2d(20, 50, 5, 1)
-        self.fc1 = nn.Linear(4*4*50, 500)
-        self.fc2 = nn.Linear(500, 10)
+        self.conv1 = nn.Sequential(
+            # padding为2，保证输出大小仍为28*28，N = (W − F + 2P )/S+1 F:kernel size, S:stride
+            nn.Conv2d(in_channels=1, out_channels=6, kernel_size=5, stride=1, padding=2),  # 输出28*28*6
+            nn.MaxPool2d(kernel_size=2, stride=2),  # 输出14*14*6
+            nn.ReLU()
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(in_channels=6, out_channels=16, kernel_size=5, stride=1, padding=0),  # 输出16*10*10
+            nn.MaxPool2d(kernel_size=2, stride=2) # 输出16*5*5
+        )
+        self.fc1 = nn.Sequential(
+            nn.Linear(16 * 5 * 5, 120),
+            nn.ReLU()
+        )
+        self.fc2 = nn.Sequential(
+            nn.Linear(120, 84),
+            nn.ReLU()
+        )
+        self.fc3 = nn.Linear(84, 10)
+
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.max_pool2d(x, 2, 2)
-        x = F.relu(self.conv2(x))
-        x = F.max_pool2d(x, 2, 2)
-        x = x.view(-1, 4*4*50)
-        x = F.relu(self.fc1(x))
+        x = self.conv1(x)
+        x = self.conv2(x)
+        # 将tensor拉平
+        x = x.reshape(-1, 16*5*5)
+        x = self.fc1(x)
         x = self.fc2(x)
+        x = self.fc3(x)
         return x
 
 
@@ -60,55 +86,16 @@ if use_cuda:
     model = model.cuda()
 print(model)
 
-optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+# 选择优化方法
+optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+# 选择损失函数
 ceriation = nn.CrossEntropyLoss()
-# for epoch in range(3):
-#     # trainning
-#     ave_loss = 0
-#
-#     for batch_idx, (x, target) in enumerate(train_loader):
-#         running_correct = 0
-#         optimizer.zero_grad()
-#         if use_cuda:
-#             x, target = x.cuda(), target.cuda()
-#         x, target = Variable(x), Variable(target)
-#         out = model(x)
-#
-#         _, pred = torch.max(out.data, 1)
-#         loss = ceriation(out, target)
-#         ave_loss = ave_loss * 0.9 + loss.item() * 0.1
-#         loss.backward()
-#         optimizer.step()
-#         running_correct += torch.sum(pred == target.data)
-#         if (batch_idx + 1) % 100 == 0 or (batch_idx + 1) == len(train_loader):
-#             print(
-#             '==>>> epoch: {}, batch index: {}, train loss: {:.6f}, train_acc: {:.6f}'.format(
-#                 epoch, batch_idx + 1, ave_loss, 10*running_correct / 100 *1.0))
-#     # testing
-#     correct_cnt, ave_loss = 0, 0
-#     total_cnt = 0
-#     for batch_idx, (x, target) in enumerate(test_loader):
-#         if use_cuda:
-#             x, target = x.cuda(), target.cuda()
-#         x, target = Variable(x), Variable(target)
-#         out = model(x)
-#         loss = ceriation(out, target)
-#         _, pred_label = torch.max(out.data, 1)
-#         #total_cnt += len(x)
-#         total_cnt += x.data.size().item()
-#         # total_cnt += x.data.size()[0]
-#         correct_cnt += (pred_label == target.data).sum()
-#         # smooth average
-#         ave_loss = ave_loss * 0.9 + loss.data * 0.1
-#
-#         if (batch_idx + 1) % 100 == 0 or (batch_idx + 1) == len(test_loader):
-#             print(
-#             '==>>> epoch: {}, batch index: {}, test loss: {:.6f}, acc: {:.3f}'.format(
-#                 epoch, batch_idx + 1, ave_loss, correct_cnt * 1.0 / total_cnt))
-for epoch in range(3):
+max_epoch = 3
+
+for epoch in range(max_epoch):
     running_loss = 0.0
     running_correct = 0
-    print("Epoch  {}/{}".format(epoch, 3))
+    print("Epoch  {}/{}".format(epoch, max_epoch))
     print("-" * 10)
     for data in train_loader:
         X_train, y_train = data
@@ -127,10 +114,7 @@ for epoch in range(3):
         # running_loss += loss.data[0]
         running_loss += loss.item()
         running_correct += torch.sum(pred == y_train.data)
-        # print("ok")
-        # print("**************%s"%running_corrrect)
 
-    print("train ok ")
     testing_correct = 0
     for data in test_loader:
         X_test, y_test = data
@@ -140,9 +124,29 @@ for epoch in range(3):
         outputs = model(X_test)
         _, pred = torch.max(outputs, 1)
         testing_correct += torch.sum(pred == y_test.data)
-        # print(testing_correct)
 
     print("Loss is :{:.4f},Train Accuracy is:{:.4f}%,Test Accuracy is:{:.4f}".format(
-        running_loss / len(train_data), 100 * running_correct / len(train_data),
-        100 * testing_correct / len(test_data)))
+        running_loss / len(train_data), 100 * running_correct / len(train_data) * 1.0,
+        100 * testing_correct / len(test_data) * 1.0))
+
+print('finish training!')
+cost_time = (datetime.now() - now_time).seconds
+print('cost time:{}s'.format(cost_time))
+
+
+net_save_path = os.path.join('../model', 'net_params.pkl')
+torch.save(model.state_dict(), net_save_path)
+
+
+# 验证模型
+for data in valid_loader:
+    X_valid, y_valid = data
+    X_valid, y_valid = X_valid.cuda(), y_valid.cuda()
+    X_valid, y_valid = Variable(X_valid), Variable(y_valid)
+    pred = model(X_valid)
+    _, pred = torch.max(pred, 1)
+    print("Predict Label is:", pred)
+    print("Real Label is :", y_valid)
+
+
 

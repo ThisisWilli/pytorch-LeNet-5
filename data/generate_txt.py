@@ -17,6 +17,9 @@ train_dir = '../data//MNIST//train/'
 test_txt_path = './MNIST//txt//test.txt'
 test_dir = '../data//MNIST//test/'
 
+valid_txt_path = './MNIST//txt//valid.txt'
+valid_dir = '../data//MNIST//valid/'
+
 
 def gen_txt(txt_path, img_dir):
     f = open(txt_path, 'w')
@@ -47,3 +50,4 @@ def gen_txt(txt_path, img_dir):
 if __name__ == '__main__':
     gen_txt(train_txt_path, train_dir)
     gen_txt(test_txt_path, test_dir)
+    gen_txt(valid_txt_path, valid_dir)

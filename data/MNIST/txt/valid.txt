@@ -1,0 +1,4 @@
+../data//MNIST//valid\mnist_train_4.png 9
+../data//MNIST//valid\mnist_train_10.png 3
+../data//MNIST//valid\mnist_train_126.png 6
+../data//MNIST//valid\mnist_train_129.png 6
